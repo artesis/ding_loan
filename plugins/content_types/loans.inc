@@ -168,7 +168,7 @@ function ding_loan_loans_form_submit($form, &$form_state) {
   $result = ding_provider_invoke('loan', 'renew', $form_state['values']['account'], $ids);
   foreach ($result as $id => $status) {
     if ($object = $form_state['values']['items'][$id]->entity) {
-      $title = $object->title;
+      $title = $object->getTitle();
     }
     else {
       $title = $item->display_name;
