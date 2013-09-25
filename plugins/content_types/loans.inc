@@ -171,10 +171,10 @@ function ding_loan_loans_form_submit($form, &$form_state) {
       $title = $object->getTitle();
     }
     else {
-      $title = $item->display_name;
+      $title = $form_state['values']['items'][$id]->display_name;
     }
     // @todo Better feedback.
-    switch ($status['state']) {
+    switch ($status) {
       case DingProviderLoan::STATUS_RENEWED:
         drupal_set_message(t('"@title renewed"', array('@title' => $title)));
         break;
