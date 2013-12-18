@@ -128,6 +128,8 @@ function ding_loan_loans_form($form, &$form_state, $account, $items = array()) {
     '#options' => $options,
     '#empty' => t('No loans'),
     '#process' => array('ding_base_element_process_tableselect_form', '_ding_loan_loans_disable'),
+    '#_choice_last' => TRUE,
+    '#_select_all_label' => t('Select all'),
   );
 
   $form['actions']['submit'] = array(
