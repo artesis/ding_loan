@@ -78,6 +78,7 @@ function ding_loan_loans_form($form, &$form_state, $account, $loans = array()) {
   foreach ($loans as $id => $item) {
     $item->creator = 'fake';
     $entity = $item->entity;
+    $disabled = $item->renewable ? FALSE : TRUE;
 
     if (!is_object($entity)) {
       // @todo Add dependency or refactor it.
@@ -85,7 +86,7 @@ function ding_loan_loans_form($form, &$form_state, $account, $loans = array()) {
     }
 
     $options[$item->id] = array(
-      '#disabled' => $item->renewable,
+      '#disabled' => $disabled,
       'title' => array(
         'data' => array(
           $entity ? ting_object_view($entity, 'user_list') : array('#markup' => $item->display_name),
@@ -118,21 +119,16 @@ function ding_loan_loans_form($form, &$form_state, $account, $loans = array()) {
     }
 
     // Add renew load opreation.
-    if (isset($item->renewable) && $item->renewable) {
+    if ($disabled == FALSE) {
       $options[$item->id]['operations']['data'][] = array(
         '#type' => 'submit',
         '#prefix' => '<div class="renew-loan-button">',
         '#value' => t('Renew'),
-        '#submit' => array('ding_loan_loans_form_renew_submit'),
         '#loan_id' => $item->id,
         '#name' => 'renew-' . $item->id, // Needed so form API can tell them apart.
-        '#disabled' => !$item->renewable,
         '#suffix' => '</div>',
-        '#attributes' => array(
-          'class' => array(
-            $item->renewable ? 'renewable' : 'not-renewable',
-          ),
-        ),
+        '#submit' => array('ding_loan_loans_form_submit'),
+        '#executes_submit_callback' => TRUE,
       );
     }
   }
@@ -153,7 +149,8 @@ function ding_loan_loans_form($form, &$form_state, $account, $loans = array()) {
     '#options' => $options,
     '#empty' => t('No loans'),
     '#process' => array('ding_base_element_process_tableselect_form', '_ding_loan_loans_disable'),
-    '#weight' => 1,
+    '#_choice_last' => TRUE,
+    '#_select_all_label' => t('Select all'),
   );
 
   $form['actions_bottom'] = array (
@@ -163,6 +160,7 @@ function ding_loan_loans_form($form, &$form_state, $account, $loans = array()) {
     '#type' => 'submit',
     '#prefix' => '<div class="renew-loan-button">',
     '#value' => t('Renew selected'),
+    '#name' => 'renew_all',
     '#suffix' => '</div>',
   );
 
@@ -175,8 +173,7 @@ function ding_loan_loans_form($form, &$form_state, $account, $loans = array()) {
  */
 function _ding_loan_loans_disable($element) {
   foreach ($element['#options'] as $key => $choice) {
-    if (isset($choice['#disabled']) && !$choice['#disabled']) {
-      $element[$key]['#disabled'] = TRUE;
+    if (isset($choice['#disabled']) && $choice['#disabled'] == TRUE) {
       $element[$key]['#attributes']['title'] = t('Not renewable');
     }
   }
@@ -188,6 +185,23 @@ function _ding_loan_loans_disable($element) {
  */
 function ding_loan_loans_form_submit($form, &$form_state) {
   $ids = array();
+
+  // Dirty hack to handle buggy submit buttons.
+  // Renew selected items.
+  if (isset($form_state['input']['renew_all']) && !empty($form_state['input']['loans'])) {
+    $ids = array_filter(array_values($form_state['input']['loans']));
+  }
+  // Renew one item.
+  else {
+    $keys = array_keys($form_state['input']);
+    foreach ($keys as $key) {
+      if (stripos($key, 'renew-') !== FALSE) {
+        $ids = array(str_replace('renew-', '', $key));
+        break;
+      }
+    }
+  }
+
   foreach (array_filter($form_state['values']['loans']) as $id) {
     // The loans array has _form_options array, henc the is_string check.
     if (is_string($id) && $form_state['values']['items'][$id]->renewable) {
@@ -198,13 +212,13 @@ function ding_loan_loans_form_submit($form, &$form_state) {
   $result = ding_provider_invoke('loan', 'renew', $form_state['values']['account'], $ids);
   foreach ($result as $id => $status) {
     if ($object = $form_state['values']['items'][$id]->entity) {
-      $title = $object->title;
+      $title = $object->getTitle();
     }
     else {
-      $title = $item->display_name;
+      $title = $form_state['values']['items'][$id]->display_name;
     }
     // @todo Better feedback.
-    switch ($status['state']) {
+    switch ($status) {
       case DingProviderLoan::STATUS_RENEWED:
         drupal_set_message(t('"@title renewed"', array('@title' => $title)));
         break;
@@ -225,12 +239,3 @@ function ding_loan_loans_form_submit($form, &$form_state) {
     }
   }
 }
-
-/**
- *
- */
-function ding_loan_loans_form_renew_submit($form, &$form_state) {
-  form_set_value($form['loans'], array($form_state['triggering_element']['#loan_id']), $form_state);
-  ding_loan_loans_form_submit($form, $form_state);
-}
-
