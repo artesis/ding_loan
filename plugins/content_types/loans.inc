@@ -178,57 +178,55 @@ function _ding_loan_loans_disable($element) {
  */
 function ding_loan_loans_form_submit($form, &$form_state) {
   $ids = array();
-
-  // Dirty hack to handle buggy submit buttons.
-  // Renew selected items.
-  if (isset($form_state['input']['renew_all']) && !empty($form_state['input']['loans'])) {
-    $ids = array_filter(array_values($form_state['input']['loans']));
-  }
-  // Renew one item.
-  else {
-    $keys = array_keys($form_state['input']);
-    foreach ($keys as $key) {
-      if (stripos($key, 'renew-') !== FALSE) {
-        $ids = array(str_replace('renew-', '', $key));
-        break;
-      }
+  foreach ($form_state['values']['items'] as $item) {
+    if ($item->renewable && $form_state['values'][$item->id]) {
+      $ids[] = $item->id;
     }
   }
-
-  foreach (array_filter($form_state['values']['loans']) as $id) {
-    // The loans array has _form_options array, henc the is_string check.
-    if (is_string($id) && $form_state['values']['items'][$id]->renewable) {
-      $ids[] = $id;
-    }
+  if (empty($ids)) {
+    return;
   }
+  $error_messages = array(
+    DingProviderLoan::STATUS_NOT_RENEWED => t('Unable to renew material'),
+    DingProviderLoan::STATUS_RENEWAL_NUM_EXCEEDED => t('Maximum number of renewals reached'),
+    DingProviderLoan::STATUS_RENEWAL_RESERVED => t('The material is reserved by another loaner'),
+  );
+  $clear_cache = FALSE;
 
   $result = ding_provider_invoke('loan', 'renew', $form_state['values']['account'], $ids);
   foreach ($result as $id => $status) {
-    if ($object = $form_state['values']['items'][$id]->entity) {
-      $title = $object->getTitle();
+    // Try to get entity for the item.
+    $entity = $form_state['values']['items'][$id]->entity;
+    if (!is_object($entity) || $entity->properties === FALSE) {
+      $item = $form_state['values']['items'][$id];
+      // Build pseudo entity based on provider information.
+      $title = $item->getTitle() ? $item->getTitle() : $item->__get('display_name');
     }
     else {
-      $title = $form_state['values']['items'][$id]->display_name;
+      // Create title from entity object.
+      $title = $entity->getTitle();
     }
     // @todo Better feedback.
     switch ($status) {
       case DingProviderLoan::STATUS_RENEWED:
+      case DingProviderLoan::STATUS_RENEWAL_REQUESTED:
         drupal_set_message(t('"@title renewed"', array('@title' => $title)));
+        $clear_cache = TRUE;
         break;
       case DingProviderLoan::STATUS_NOT_RENEWED:
-        if ($status['message'] == 'maxNofRenewals') {
-          $message = t('Maximum number of renewals reached');
-        }
-        elseif ($status['message'] == 'copyIsReserved') {
-          $message = t('The material is reserved by another loaner');
-        }
-        else {
-          $message = t('Unable to renew material');
-        }
-        drupal_set_message(t('"@title not renewed: @message"', array('@title' => $title, '@message' => $message)), 'warning');
+      case DingProviderLoan::STATUS_RENEWAL_NUM_EXCEEDED:
+      case DingProviderLoan::STATUS_RENEWAL_RESERVED:
+        drupal_set_message(t('"@title: @message"', array(
+          '@title' => $title,
+          '@message' => $error_messages[$status],
+        )), 'warning');
         break;
       default:
         watchdog('ding_loan', 'Unknown renewal status code @code.', array('@code' => $status), WATCHDOG_ERROR);
     }
+  }
+  // Clear session cache.
+  if ($clear_cache && module_exists('ding_session_cache')) {
+    ding_session_cache_clear('ding_loan', 'list');
   }
 }
