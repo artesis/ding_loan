@@ -179,7 +179,6 @@ function _ding_loan_loans_disable($element) {
 function ding_loan_loans_form_submit($form, &$form_state) {
   $ids = array();
   foreach ($form_state['values']['items'] as $item) {
-    $ids[] = $item->id;
     if ($item->renewable && $form_state['values'][$item->id]) {
       $ids[] = $item->id;
     }
