@@ -134,6 +134,7 @@ function ding_loan_loans_form($form, &$form_state, $account, $loans = array()) {
     '#prefix' => '<div class="renew-loan-button">',
     '#value' => t('Renew selected'),
     '#suffix' => '</div>',
+    '#name' => 'renew_all_top',
   );
 
   $form['loans'] = array(
@@ -153,7 +154,7 @@ function ding_loan_loans_form($form, &$form_state, $account, $loans = array()) {
     '#type' => 'submit',
     '#prefix' => '<div class="renew-loan-button">',
     '#value' => t('Renew selected'),
-    '#name' => 'renew_all',
+    '#name' => 'renew_all_bottom',
     '#suffix' => '</div>',
   );
 
@@ -177,13 +178,35 @@ function _ding_loan_loans_disable($element) {
  * Submit handler for the form.
  */
 function ding_loan_loans_form_submit($form, &$form_state) {
+  $renewAllClicked = !empty(array_intersect(
+    ['renew_all_top', 'renew_all_bottom'],
+    array_keys($form_state['input'])
+  ));
+  // Dirty hack to handle buggy submit buttons.
+  // Renew selected items.
+  $_ids = array();
+  if ($renewAllClicked && !empty($form_state['input']['loans'])) {
+    $_ids = array_filter(array_values($form_state['input']['loans']));
+  }
+  // Renew one item.
+  else {
+    $keys = array_keys($form_state['input']);
+    foreach ($keys as $key) {
+      if (stripos($key, 'renew-') !== FALSE) {
+        $_ids = array(str_replace('renew-', '', $key));
+        break;
+      }
+    }
+  }
+
   $ids = array();
-  foreach ($form_state['values']['items'] as $item) {
-    $ids[] = $item->id;
+  foreach ($_ids as $id) {
+    // The loans array has _form_options array, hence the is_string check.
+    if (is_string($id) && $form_state['values']['items'][$id]->renewable) {
+      $ids[] = $id;
+    }
   }
-  if (empty($ids)) {
-    return;
-  }
+
   $error_messages = array(
     DingProviderLoan::STATUS_NOT_RENEWED => t('Unable to renew material'),
     DingProviderLoan::STATUS_RENEWAL_NUM_EXCEEDED => t('Maximum number of renewals reached'),
