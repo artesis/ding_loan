@@ -69,11 +69,10 @@ function ding_loan_loans_form($form, &$form_state, $account, $loans = array()) {
   );
 
   foreach ($loans as $id => $item) {
-    $item->creator = 'fake';
     $entity = $item->entity;
     $disabled = $item->renewable ? FALSE : TRUE;
 
-    if (!is_object($entity)) {
+    if (!is_object($entity) || NULL === $entity->getType()) {
       // @todo Add dependency or refactor it.
       $entity = ding_reservation_replace_entity($item);
     }
@@ -82,7 +81,7 @@ function ding_loan_loans_form($form, &$form_state, $account, $loans = array()) {
       '#disabled' => $disabled,
       'title' => array(
         'data' => array(
-          $entity ? ting_object_view($entity, 'user_list') : array('#markup' => $item->display_name),
+          ting_object_view($entity, 'user_list'),
         ),
         'class' => 'title',
       ),
